@@ -19,6 +19,7 @@ import org.nlogo.swing.Implicits.thunk2runnable
 import org.nlogo.workspace.{ AbstractWorkspaceScala, ExportOutput, HubNetManagerFactory }
 import org.nlogo.window.Events.{ ExportPlotEvent, ExportWidgetEvent, ExportWorldEvent }
 
+import scala.util.{ Failure, Success, Try }
 import scala.concurrent.{ Await, Future }
 import scala.concurrent.duration.{ Duration, MILLISECONDS }
 
@@ -58,15 +59,17 @@ abstract class GUIWorkspaceScala(world: World,
           import java.util.StringTokenizer
           exportToPath
             .map((filename: String) => (filename, ow.valueText))(SwingUnlockedExecutionContext)
-            .onSuccess({
-              case (filename, text) => ExportOutput.silencingErrors(filename, text)
+            .onComplete({
+              case Success((filename: String, text: String)) =>
+                ExportOutput.silencingErrors(filename, text)
+              case Failure(_) =>
             })(NetLogoExecutionContext.backgroundExecutionContext)
         case ib: InputBox =>
           exportToPath
             .map((filename: String) => (filename, ib.valueText))(SwingUnlockedExecutionContext)
             .map[Unit]({ // background
               case (filename: String, text: String) => FileIO.writeFile(filename, text, true); ()
-            })(NetLogoExecutionContext.backgroundExecutionContext).onFailure({ // on UI Thread
+            })(NetLogoExecutionContext.backgroundExecutionContext).failed.foreach({ // on UI Thread
               case ex: java.io.IOException =>
                 ExportControls.displayExportError(Hierarchy.getFrame(ib),
                   I18N.gui.get("menu.file.export.failed"),
